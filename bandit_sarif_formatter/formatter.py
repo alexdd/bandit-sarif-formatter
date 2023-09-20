@@ -120,12 +120,10 @@ def add_skipped_file_notifications(skips, invocation):
 
 
 def find_in_cwe(cweid):
-    cwe_finding = None
     for weakness in CWE_DATA_DICT["weaknesses"]:
         if weakness["cweid"] == cweid:
-            cwe_finding = weakness
-            break
-    return cwe_finding
+            return weakness
+    return None
 
 
 def create_taxa_element(cweid, run_uuid):
@@ -139,9 +137,10 @@ def create_taxa_element(cweid, run_uuid):
 def extend_taxa_element(taxa):
     result = taxa.copy()
     cwe_finding = find_in_cwe(taxa["id"])
-    result["name"] = cwe_finding["name"]
-    result["shortDescription"] = {"text": cwe_finding["description"]}
-    result["defaultConfiguration"] = {"level": cwe_finding["severity"]}
+    if cwe_finding:
+        result["name"] = cwe_finding["name"]
+        result["shortDescription"] = {"text": cwe_finding["description"]}
+        result["defaultConfiguration"] = {"level": cwe_finding["severity"]}
     return result
 
 
