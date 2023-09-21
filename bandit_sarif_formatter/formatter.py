@@ -47,14 +47,16 @@ def report(manager, fileobj, sev_level, conf_level, lines=-1):
         results.append(result)
 
     log = om.SarifLog(
-        schema_uri="https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0-rtm.4.json",
+        schema_uri="https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0.json",
         version="2.1.0",
         runs=[
             om.Run(
-                taxonomies=create_taxonomies_element(results, run_uuid),
+                taxonomies=[create_taxonomies_element(results, run_uuid)],
                 tool=om.Tool(
                     driver=om.ToolComponent(
                         name="Bandit",
+                        version="1.7.5",
+                        information_uri="https://github.com/PyCQA/bandit/tree/main",
                         supported_taxonomies=[{"name": "CWE", "guid": run_uuid}],
                     )
                 ),
@@ -140,11 +142,17 @@ def extend_taxa_element(taxa):
     if cwe_finding:
         result["name"] = cwe_finding["name"]
         result["shortDescription"] = {"text": cwe_finding["description"]}
-        result["defaultConfiguration"] = {"level": cwe_finding["severity"]}
+        # result["defaultConfiguration"] = {"level": cwe_finding["severity"]}
+        del result["toolComponent"]
     return result
 
 
 def create_taxonomies_element(results, run_uuid):
+    unique_taxas = {}
+    taxas = [extend_taxa_element(result.taxa[0]) for result in results]
+    for taxa in taxas:
+        unique_taxas[taxa["id"]] = taxa
+
     return {
         "name": CWE_DATA_DICT["name"],
         "version": CWE_DATA_DICT["version"],
@@ -154,7 +162,7 @@ def create_taxonomies_element(results, run_uuid):
         "downloadUri": CWE_DATA_DICT["downloadUri"],
         "organization": CWE_DATA_DICT["organization"],
         "shortDescription": {"text": CWE_DATA_DICT["shortDescription"]},
-        "taxa": [extend_taxa_element(result.taxa) for result in results],
+        "taxa": list(unique_taxas.values()),
     }
 
 
@@ -162,17 +170,19 @@ def add_relationship_to_rules(rules, results, run_uuid):
     for rule in rules:
         for result in results:
             if result.rule_id == rule:
-                rules[rule].relationships = {
-                    "target": {
-                        "id": result.taxa["id"],
-                        "guid": run_uuid,
-                        "toolComponent": {
-                            "name": "CWE",
-                            "guid": result.taxa["toolComponent"]["guid"],
+                rules[rule].relationships = [
+                    {
+                        "target": {
+                            "id": result.taxa[0]["id"],
+                            "guid": run_uuid,
+                            "toolComponent": {
+                                "name": "CWE",
+                                "guid": result.taxa[0]["toolComponent"]["guid"],
+                            },
                         },
-                    },
-                    "kinds": ["superset"],
-                }
+                        "kinds": ["superset"],
+                    }
+                ]
     return rules
 
 
@@ -195,7 +205,7 @@ def create_result(issue, rules, rule_indices, run_uuid):
         message=om.Message(text=issue_dict["issue_text"]),
         level=level_from_severity(issue_dict["issue_severity"]),
         locations=[om.Location(physical_location=physical_location)],
-        taxa=create_taxa_element(issue_dict["issue_cwe"]["id"], run_uuid),
+        taxa=[create_taxa_element(issue_dict["issue_cwe"]["id"], run_uuid)],
         properties={
             "issue_confidence": issue_dict["issue_confidence"],
             "issue_severity": issue_dict["issue_severity"],
